@@ -11,18 +11,15 @@ These are thin wrappers around pandas to centralize read logic and default param
 import pandas as pd
 
 
-def read_csv(path: str, **kwargs) -> pd.DataFrame:
-    """Read CSV with sensible defaults.
+import pandas as pd
 
-    Args:
-        path: path to CSV file
-        **kwargs: forwarded to pd.read_csv
-    Returns:
-        DataFrame
-    """
-    defaults = dict(encoding='utf-8', low_memory=False)
-    defaults.update(kwargs)
-    return pd.read_csv(path, **defaults)
+def read_csv(file):
+    try:
+        # First, try standard UTF-8
+        return pd.read_csv(file, encoding='utf-8')
+    except UnicodeDecodeError:
+        # If that fails, try 'latin1' (ISO-8859-1), which handles special symbols
+        return pd.read_csv(file, encoding='latin1')
 
 
 def read_excel(path: str, sheet_name=0, **kwargs) -> pd.DataFrame:
