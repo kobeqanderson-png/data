@@ -223,9 +223,12 @@ if st.session_state.df_raw is not None:
 else:
     st.info("💡 Please upload a data file in Step 1 to begin processing.")
     # Visualization section
+    # --- 5️⃣ Sex Differences Analysis Section ---
+if st.session_state.df_processed is not None:
+    df_processed = st.session_state.df_processed
     st.divider()
     st.header("5️⃣ Sex Differences Analysis")
-
+    
     numeric_cols = df_processed.select_dtypes(include=['number']).columns.tolist()
 
     # Check if Sex column exists
@@ -502,6 +505,7 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
 
