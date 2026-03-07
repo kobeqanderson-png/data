@@ -170,70 +170,58 @@ if st.session_state.df_raw is not None:
         })
         st.dataframe(col_info, use_container_width=True)
 
-    # Processing section
+
+   
+
+ # --- 3️⃣ Process Data Section ---
+if st.session_state.df_raw is not None:
+    df_raw = st.session_state.df_raw
     st.divider()
     st.header("3️⃣ Process Data")
 
-    # Animal column selection for sex classification
-    st.divider()
-st.header("3️⃣ Process Data")
+    # Dynamic Column Selection
+    all_cols = df_raw.columns.tolist()
 
-# Dynamic Column Selection
-all_cols = df_raw.columns.tolist()
+    col_a, col_b = st.columns(2)
+    with col_a:
+        sex_col = st.selectbox(
+            "Select Column for Sex Classification", 
+            options=all_cols,
+            help="Select the column containing numeric values (e.g., Animal #)."
+        )
 
-col_a, col_b = st.columns(2)
-with col_a:
-    # This allows you to pick ANY column from your uploaded file
-    sex_col = st.selectbox(
-        "Select Column for Sex Classification", 
-        options=all_cols,
-        help="Select the column containing the numeric values used to determine sex."
-    )
+    with col_b:
+        threshold = st.number_input(
+            f"Threshold for {sex_col}", 
+            value=16, 
+            step=1
+        )
 
-with col_b:
-    # Users can set the threshold for the specific column chosen above
-    threshold = st.number_input(
-        f"Threshold for {sex_col}", 
-        value=16, 
-        step=1
-    )
-            
-   # Processing section
     if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
         with st.spinner("Processing data..."):
             try:
                 # 1. Apply basic cleaning
                 df_processed = basic_clean(df_raw)
                 
-                # 2. Apply sex classification using YOUR chosen column and threshold
-                # This uses 'sex_col' and 'threshold' defined right above this button
+                # 2. Apply sex classification
                 df_processed['Sex'] = df_processed[sex_col].apply(
                     lambda x: 'Male' if pd.notna(x) and x <= threshold else 'Female'
                 )
                 
-                # 3. Add log features if enabled in sidebar
+                # 3. Add log features if enabled
                 if add_log_features:
                     numeric_cols = df_processed.select_dtypes(include=['number']).columns
                     if len(numeric_cols) > 0:
                         df_processed = add_log_feature(df_processed, col=numeric_cols[0])
                 
-                # 4. Save results to session state
+                # 4. Save results
                 st.session_state.df_processed = df_processed
-                
-                # Show Success Metrics
                 st.success("✅ Processing complete!")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Original Rows", len(df_raw))
-                m2.metric("Processed Rows", len(df_processed))
-                m3.metric("Males Identified", (df_processed['Sex'] == 'Male').sum())
                 
             except Exception as e:
-                st.error(f"❌ Error during processing: {e}")        
-    # Columns list
-    with st.expander("📋 All Columns"):
-        for i, col in enumerate(df_processed.columns, 1):
-            st.text(f"{i}. {col}")
-
+                st.error(f"❌ Error during processing: {e}")
+else:
+    st.info("💡 Please upload a data file in Step 1 to begin processing.")
     # Visualization section
     st.divider()
     st.header("5️⃣ Sex Differences Analysis")
@@ -514,6 +502,7 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
 
