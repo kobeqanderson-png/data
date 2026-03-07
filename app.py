@@ -103,9 +103,10 @@ if uploaded_file is not None:
     # Load the file
     try:
         file_extension = Path(uploaded_file.name).suffix.lower()
-
-        if file_extension == '.csv':
-            df_raw = pd.read_csv(uploaded_file, encoding='utf-8', low_memory=False)
+# NEW WORKING CODE
+if file_extension == '.csv':
+    df_raw = read_csv(uploaded_file)
+        
         elif file_extension in ['.xlsx', '.xls']:
             # For Excel, check available sheets
             xl = pd.ExcelFile(uploaded_file)
@@ -530,4 +531,5 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
