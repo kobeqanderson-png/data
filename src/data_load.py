@@ -8,30 +8,23 @@ Functions:
 These are thin wrappers around pandas to centralize read logic and default parameters.
 """
 
-import pandas as pd
-
-
-import pandas as pd
-
-import pandas as pd
 import io
 
+import pandas as pd
+
 def read_csv(file):
-    # Try the most common encodings used in research data
+    # This list of encodings handles the 'utf-8' and 'latin1' errors
     encodings = ['utf-8', 'latin1', 'cp1252']
-    
     for enc in encodings:
         try:
-            # We seek to 0 to ensure we read from the start of the file
-            file.seek(0)
-            return pd.read_csv(file, encoding=enc)
-        except (UnicodeDecodeError, Exception):
+            file.seek(0) # Reset file pointer to the beginning
+            return pd.read_csv(file, encoding=enc, low_memory=False)
+        except Exception:
             continue
-            
-    raise ValueError("Could not decode CSV file. Please try saving it as an Excel file (.xlsx) instead.")
+    raise ValueError("Could not decode CSV. Try saving as an Excel file (.xlsx).")
 
-def read_excel(file):
-    return pd.read_excel(file)
+def read_excel(file, sheet_name=0):
+    return pd.read_excel(file, sheet_name=sheet_name)
 
 def read_excel(path: str, sheet_name=0, **kwargs) -> pd.DataFrame:
     """Read Excel file (openpyxl recommended).
