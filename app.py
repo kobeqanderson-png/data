@@ -197,12 +197,6 @@ with col_b:
         value=16, 
         step=1
     )
-
-if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
-    with st.spinner("Processing data..."):
-        try:
-            # Apply basic cleaning
-            df_processed = basic_clean(df_raw)
             
    # Processing section
     if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
@@ -520,6 +514,7 @@ st.markdown("""
 **Data Processing Pipeline** | Built with Streamlit  
 To run from command line: `streamlit run app.py`
 """)
+
 
 
 
