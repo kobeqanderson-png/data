@@ -10,6 +10,7 @@ import numpy as np
 from pathlib import Path
 import io
 import sys
+import re
 from scipy import stats as scipy_stats
 from openpyxl.styles import Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -74,6 +75,45 @@ def autosize_columns(ws, min_width: int = 10, max_width: int = 42) -> None:
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 2, min_width), max_width)
 
 
+def parse_animal_number(value) -> float:
+    """Extract animal ID numbers from numeric values or labels like 'rat17'/'subject_17'."""
+    if pd.isna(value):
+        return np.nan
+
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+
+    text = str(value).strip()
+    if not text:
+        return np.nan
+
+    lower_text = text.lower()
+
+    # Explicitly support common animal ID prefixes used in lab datasets.
+    prefixed_match = re.search(
+        r"(?:rat|subject|animal)\s*[-_#:]?\s*(\d+(?:\.\d+)?)",
+        lower_text,
+    )
+    if prefixed_match:
+        return float(prefixed_match.group(1))
+
+    # Also handle plain numeric strings such as "17" or "17.0".
+    numeric_only_match = re.fullmatch(r"\d+(?:\.\d+)?", lower_text)
+    if numeric_only_match:
+        return float(numeric_only_match.group(0))
+
+    # Backward-compatible fallback for mixed identifiers that still include a number.
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if match:
+        return float(match.group(0))
+    return np.nan
+
+
+def parse_animal_number_series(series: pd.Series) -> pd.Series:
+    """Vectorized animal-number parsing for mixed numeric/text identifiers."""
+    return series.apply(parse_animal_number)
+
+
 def infer_animal_column(df: pd.DataFrame):
     """Infer likely animal identifier column name from common patterns."""
     normalized = {col.lower().strip(): col for col in df.columns}
@@ -98,7 +138,7 @@ def build_excel_export(df_processed: pd.DataFrame, animal_col: str = None, thres
     export_df = df_processed.copy()
 
     if animal_col:
-        animal_num = pd.to_numeric(export_df[animal_col], errors='coerce')
+        animal_num = parse_animal_number_series(export_df[animal_col])
         # Rebuild classification directly from animal number to avoid stale/mismatched sex labels.
         export_df['Sex'] = np.where(
             animal_num <= threshold,
@@ -126,7 +166,7 @@ def build_excel_export(df_processed: pd.DataFrame, animal_col: str = None, thres
         low_count = 0
         has_gap = False
         if animal_col:
-            ordered_df['_animal_num_sort'] = pd.to_numeric(ordered_df[animal_col], errors='coerce')
+            ordered_df['_animal_num_sort'] = parse_animal_number_series(ordered_df[animal_col])
             low = ordered_df[ordered_df['_animal_num_sort'].notna() & (ordered_df['_animal_num_sort'] <= threshold)]
             high = ordered_df[ordered_df['_animal_num_sort'].notna() & (ordered_df['_animal_num_sort'] > threshold)]
             unknown = ordered_df[ordered_df['_animal_num_sort'].isna()]
@@ -397,7 +437,7 @@ if st.session_state.df_raw is not None:
         sex_col = st.selectbox(
             "Select Column for Sex Classification", 
             options=all_cols,
-            help="Select the column containing numeric values (e.g., Animal #)."
+            help="Select the ID column (e.g., 1, animal_1, rat1, subject1)."
         )
 
     with col_b:
@@ -414,12 +454,18 @@ if st.session_state.df_raw is not None:
                 df_processed = basic_clean(df_raw)
                 
                 # 2. Apply sex classification
-                sex_numeric = pd.to_numeric(df_processed[sex_col], errors='coerce')
+                sex_numeric = parse_animal_number_series(df_processed[sex_col])
                 df_processed['Sex'] = np.where(
                     sex_numeric <= threshold,
                     'Male',
                     np.where(sex_numeric > threshold, 'Female', 'Unclassified')
                 )
+                unclassified_count = int((df_processed['Sex'] == 'Unclassified').sum())
+                if unclassified_count > 0:
+                    st.warning(
+                        f"{unclassified_count} row(s) could not be classified because no numeric animal ID was found "
+                        f"in '{sex_col}'."
+                    )
                 st.session_state.sex_col_used = sex_col
                 st.session_state.sex_threshold_used = float(threshold)
                 
