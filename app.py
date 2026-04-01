@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 
 st.set_page_config(
     page_title="NIH SABV Compliant Pipeline",
-    page_icon="📊",
+    page_icon=None,
     layout="wide"
 )
 
@@ -269,6 +269,48 @@ def parse_animal_number_series(series: pd.Series) -> pd.Series:
     return series.apply(parse_animal_number)
 
 
+def parse_id_list(raw_text: str):
+    """Parse comma-separated IDs/ranges (e.g., '1-16, 20, 22-24') into numeric IDs."""
+    values = set()
+    invalid_tokens = []
+
+    for token in raw_text.split(','):
+        token = token.strip()
+        if not token:
+            continue
+
+        if '-' in token:
+            parts = token.split('-', 1)
+            if len(parts) != 2:
+                invalid_tokens.append(token)
+                continue
+            try:
+                start = float(parts[0].strip())
+                end = float(parts[1].strip())
+            except ValueError:
+                invalid_tokens.append(token)
+                continue
+
+            # Expand integer-like ranges; keep decimal endpoints as explicit IDs.
+            if float(start).is_integer() and float(end).is_integer():
+                start_i = int(start)
+                end_i = int(end)
+                lo, hi = (start_i, end_i) if start_i <= end_i else (end_i, start_i)
+                for v in range(lo, hi + 1):
+                    values.add(float(v))
+            else:
+                values.add(float(start))
+                values.add(float(end))
+            continue
+
+        try:
+            values.add(float(token))
+        except ValueError:
+            invalid_tokens.append(token)
+
+    return values, invalid_tokens
+
+
 def infer_animal_column(df: pd.DataFrame):
     """Infer likely animal identifier column name from common patterns."""
     normalized = {col.lower().strip(): col for col in df.columns}
@@ -285,14 +327,19 @@ def infer_animal_column(df: pd.DataFrame):
     return None
 
 
-def build_excel_export(df_processed: pd.DataFrame, animal_col: str = None, threshold: float = 16) -> bytes:
+def build_excel_export(
+    df_processed: pd.DataFrame,
+    animal_col: str = None,
+    threshold: float = 16,
+    rebuild_sex_labels: bool = True,
+) -> bytes:
     """Build one digestible Excel sheet with animal-ordered data and a summary stats table."""
     excel_buffer = io.BytesIO()
 
     animal_col = animal_col if animal_col in df_processed.columns else infer_animal_column(df_processed)
     export_df = df_processed.copy()
 
-    if animal_col:
+    if animal_col and rebuild_sex_labels:
         animal_num = parse_animal_number_series(export_df[animal_col])
         # Rebuild classification directly from animal number to avoid stale/mismatched sex labels.
         export_df['Sex'] = np.where(
@@ -447,7 +494,7 @@ st.divider()
 
 # Sidebar for settings
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("Settings")
 
     # Sex classification settings
     st.subheader("Sex Classification")
@@ -483,7 +530,7 @@ with st.sidebar:
     add_log_features = st.checkbox("Add log-transformed features", value=True)
 
 # File upload section
-st.header("1️⃣ Upload Your Data")
+st.header("1. Upload Your Data")
 
 uploaded_file = st.file_uploader(
     "Choose a CSV or Excel file",
@@ -508,15 +555,15 @@ if uploaded_file is not None:
         elif file_extension in ['.xlsx', '.xls']:
             xl = pd.ExcelFile(uploaded_file)
             available_sheets = xl.sheet_names
-            st.info(f"📋 Available sheets: {', '.join(available_sheets)}")
+            st.info(f"Available sheets: {', '.join(available_sheets)}")
             selected_sheet = st.selectbox("Select sheet to load", available_sheets, index=0)
             df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
         
         st.session_state.df_raw = df_raw
-        st.success(f"✅ Loaded **{uploaded_file.name}** - {len(df_raw):,} rows × {len(df_raw.columns)} columns")
+        st.success(f"Loaded **{uploaded_file.name}** - {len(df_raw):,} rows × {len(df_raw.columns)} columns")
         
     except Exception as e:
-        st.error(f"❌ Error loading file: {e}")
+        st.error(f"Error loading file: {e}")
         st.stop()
 
 # Data exploration section
@@ -524,10 +571,10 @@ if st.session_state.df_raw is not None:
     df_raw = st.session_state.df_raw
 
     st.divider()
-    st.header("2️⃣ Explore Raw Data")
+    st.header("2. Explore Raw Data")
 
     # Data preview tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Preview", "📊 Statistics", "❓ Missing Values", "📈 Columns"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Preview", "Statistics", "Missing Values", "Columns"])
 
     with tab1:
         st.subheader("Data Preview")
@@ -556,7 +603,7 @@ if st.session_state.df_raw is not None:
         if len(missing_with_values) > 0:
             st.dataframe(missing_with_values, use_container_width=True)
         else:
-            st.success("✅ No missing values found!")
+            st.success("No missing values found")
 
     with tab4:
         st.subheader("Column Information")
@@ -571,11 +618,11 @@ if st.session_state.df_raw is not None:
 
    
 
- # --- 3️⃣ Process Data Section ---
+ # --- 3. Process Data Section ---
 if st.session_state.df_raw is not None:
     df_raw = st.session_state.df_raw
     st.divider()
-    st.header("3️⃣ Process Data")
+    st.header("3. Process Data")
 
     # Dynamic Column Selection
     all_cols = df_raw.columns.tolist()
@@ -589,13 +636,35 @@ if st.session_state.df_raw is not None:
         )
 
     with col_b:
-        threshold = st.number_input(
-            f"Threshold for {sex_col}", 
-            value=16, 
-            step=1
+        classification_mode = st.radio(
+            "Classification Method",
+            ["Threshold split", "Manual number lists", "Female list (others Male)"],
+            horizontal=True,
         )
 
-    if st.button("🚀 Run Processing Pipeline", type="primary", use_container_width=True):
+    threshold = 16
+    male_ids_text = ""
+    female_ids_text = ""
+
+    if classification_mode == "Threshold split":
+        threshold = st.number_input(
+            f"Threshold for {sex_col}",
+            value=16,
+            step=1,
+            help="Animal ID <= threshold is Male; > threshold is Female.",
+        )
+    elif classification_mode == "Manual number lists":
+        st.caption("Enter comma-separated IDs or ranges like 1-16, 20, 22-24.")
+        list_col_a, list_col_b = st.columns(2)
+        with list_col_a:
+            male_ids_text = st.text_input("Male IDs", value="1-16")
+        with list_col_b:
+            female_ids_text = st.text_input("Female IDs", value="17-32")
+    else:
+        st.caption("Enter female IDs; any other numeric ID will be assigned Male.")
+        female_ids_text = st.text_input("Female IDs", value="17-32")
+
+    if st.button("Run Processing Pipeline", type="primary", use_container_width=True):
         with st.spinner("Processing data..."):
             try:
                 # 1. Apply basic cleaning
@@ -603,11 +672,50 @@ if st.session_state.df_raw is not None:
                 
                 # 2. Apply sex classification
                 sex_numeric = parse_animal_number_series(df_processed[sex_col])
-                df_processed['Sex'] = np.where(
-                    sex_numeric <= threshold,
-                    'Male',
-                    np.where(sex_numeric > threshold, 'Female', 'Unclassified')
-                )
+                if classification_mode == "Threshold split":
+                    df_processed['Sex'] = np.where(
+                        sex_numeric <= threshold,
+                        'Male',
+                        np.where(sex_numeric > threshold, 'Female', 'Unclassified')
+                    )
+                elif classification_mode == "Manual number lists":
+                    male_ids, male_invalid = parse_id_list(male_ids_text)
+                    female_ids, female_invalid = parse_id_list(female_ids_text)
+
+                    if male_invalid or female_invalid:
+                        bad_tokens = male_invalid + female_invalid
+                        raise ValueError(
+                            f"Invalid ID tokens: {', '.join(bad_tokens)}. Use numbers or ranges like 1-16, 20."
+                        )
+
+                    overlap = male_ids.intersection(female_ids)
+                    if overlap:
+                        st.warning(
+                            f"Overlapping IDs in male/female lists: {sorted(overlap)}. Male assignment takes precedence."
+                        )
+
+                    male_mask = sex_numeric.isin(male_ids)
+                    female_mask = sex_numeric.isin(female_ids)
+                    df_processed['Sex'] = np.select(
+                        [male_mask, female_mask],
+                        ['Male', 'Female'],
+                        default='Unclassified',
+                    )
+                else:
+                    female_ids, female_invalid = parse_id_list(female_ids_text)
+                    if female_invalid:
+                        raise ValueError(
+                            f"Invalid ID tokens: {', '.join(female_invalid)}. Use numbers or ranges like 17-32, 40."
+                        )
+
+                    is_numeric_id = sex_numeric.notna()
+                    female_mask = sex_numeric.isin(female_ids)
+                    df_processed['Sex'] = np.select(
+                        [female_mask, is_numeric_id],
+                        ['Female', 'Male'],
+                        default='Unclassified',
+                    )
+
                 unclassified_count = int((df_processed['Sex'] == 'Unclassified').sum())
                 if unclassified_count > 0:
                     st.warning(
@@ -616,6 +724,7 @@ if st.session_state.df_raw is not None:
                     )
                 st.session_state.sex_col_used = sex_col
                 st.session_state.sex_threshold_used = float(threshold)
+                st.session_state.sex_rebuild_from_threshold = classification_mode == "Threshold split"
                 
                 # 3. Add log features if enabled
                 if add_log_features:
@@ -625,25 +734,25 @@ if st.session_state.df_raw is not None:
                 
                 # 4. Save results
                 st.session_state.df_processed = df_processed
-                st.success("✅ Processing complete!")
+                st.success("Processing complete")
                 
             except Exception as e:
-                st.error(f"❌ Error during processing: {e}")
+                st.error(f"Error during processing: {e}")
 else:
-    st.info("💡 Please upload a data file in Step 1 to begin processing.")
+    st.info("Please upload a data file in Step 1 to begin processing.")
     # Visualization section
-    # --- 5️⃣ Sex Differences Analysis Section ---
+    # --- 5. Sex Differences Analysis Section ---
 if st.session_state.df_processed is not None:
     df_processed = st.session_state.df_processed
     st.divider()
-    st.header("5️⃣ Sex Differences Analysis")
+    st.header("5. Sex Differences Analysis")
     
     numeric_cols = df_processed.select_dtypes(include=['number']).columns.tolist()
 
     # Check if Sex column exists
     if 'Sex' in df_processed.columns:
         # Sex distribution overview
-        st.subheader("📊 Sex Distribution")
+        st.subheader("Sex Distribution")
 
         sex_counts = df_processed['Sex'].value_counts()
         col1, col2, col3 = st.columns(3)
@@ -680,7 +789,7 @@ if st.session_state.df_processed is not None:
         st.divider()
 
         # Sex differences comparison
-        st.subheader("🔬 Compare Variables by Sex")
+        st.subheader("Compare Variables by Sex")
 
         if numeric_cols:
             selected_var = st.selectbox(
@@ -721,7 +830,7 @@ if st.session_state.df_processed is not None:
                 plt.close()
 
             # Histogram overlay by sex
-            st.subheader("📈 Distribution Overlay")
+            st.subheader("Distribution Overlay")
             fig, ax = plt.subplots(figsize=(10, 5))
 
             male_data = df_processed[df_processed['Sex'] == 'Male'][selected_var].dropna()
@@ -737,7 +846,7 @@ if st.session_state.df_processed is not None:
             plt.close()
 
             # Summary statistics by sex
-            st.subheader("📋 Summary Statistics by Sex")
+            st.subheader("Summary Statistics by Sex")
 
             stats_by_sex = df_processed.groupby('Sex')[selected_var].agg([
                 'count', 'mean', 'std', 'min', 'median', 'max'
@@ -750,7 +859,7 @@ if st.session_state.df_processed is not None:
 
             if not pd.isna(t_stat):
 
-                st.subheader("📊 Statistical Test (Independent t-test)")
+                st.subheader("Statistical Test (Independent t-test)")
                 stat_col1, stat_col2, stat_col3 = st.columns(3)
 
                 with stat_col1:
@@ -762,9 +871,9 @@ if st.session_state.df_processed is not None:
                     st.metric("Result (α=0.05)", significance)
 
                 if p_value < 0.05:
-                    st.success(f"✅ Significant difference found (p={p_value:.4f} < 0.05)")
+                    st.success(f"Significant difference found (p={p_value:.4f} < 0.05)")
                 else:
-                    st.info(f"ℹ️ No significant difference (p={p_value:.4f} ≥ 0.05)")
+                    st.info(f"No significant difference (p={p_value:.4f} >= 0.05)")
             else:
                 st.warning(
                     f"Not enough non-missing values for a t-test on {selected_var}. "
@@ -774,7 +883,7 @@ if st.session_state.df_processed is not None:
         st.divider()
 
         # Multi-variable comparison
-        st.subheader("📊 Multi-Variable Sex Comparison")
+        st.subheader("Multi-Variable Sex Comparison")
 
         if len(numeric_cols) > 0:
             selected_vars = st.multiselect(
@@ -808,7 +917,7 @@ if st.session_state.df_processed is not None:
                 plt.close()
 
                 # Combined bar + scatter (mean with individual points)
-                st.subheader("🎯 Combined Bar + Scatter")
+                st.subheader("Combined Bar + Scatter")
                 combo_var = st.selectbox(
                     "Select variable for combined bar + scatter",
                     selected_vars,
@@ -848,7 +957,7 @@ if st.session_state.df_processed is not None:
                 plt.close()
 
                 # Density distribution (KDE)
-                st.subheader("🌫️ Density Distribution")
+                st.subheader("Density Distribution")
                 density_var = st.selectbox(
                     "Select variable for density distribution",
                     selected_vars,
@@ -877,7 +986,7 @@ if st.session_state.df_processed is not None:
                 plt.close()
 
                 # Scatter plot
-                st.subheader("🟢 Scatter Graph")
+                st.subheader("Scatter Graph")
                 scatter_cols = st.columns(2)
                 with scatter_cols[0]:
                     x_var = st.selectbox("X-axis variable", selected_vars, key="scatter_x")
@@ -940,10 +1049,10 @@ if st.session_state.df_processed is not None:
                 st.dataframe(comparison_df, use_container_width=True)
 
     else:
-        st.warning("⚠️ No 'Sex' column found. Please run the processing pipeline first with an Animal # column selected.")
+        st.warning("No 'Sex' column found. Please run the processing pipeline first with an Animal # column selected.")
 
     st.divider()
-    st.header("6️⃣ General Visualizations")
+    st.header("6. General Visualizations")
 
     viz_col1, viz_col2 = st.columns(2)
 
@@ -991,7 +1100,7 @@ if st.session_state.df_processed is not None:
 
     # Download section
     st.divider()
-    st.header("7️⃣ Download Processed Data")
+    st.header("7. Download Processed Data")
 
     col1, col2 = st.columns(2)
 
@@ -1007,7 +1116,7 @@ if st.session_state.df_processed is not None:
             csv_filename = "processed_data.csv"
 
         st.download_button(
-            label="📥 Download as CSV",
+            label="Download as CSV",
             data=csv_data,
             file_name=csv_filename,
             mime="text/csv",
@@ -1019,7 +1128,8 @@ if st.session_state.df_processed is not None:
         excel_data = build_excel_export(
             df_processed,
             animal_col=st.session_state.get('sex_col_used'),
-            threshold=st.session_state.get('sex_threshold_used', 16)
+            threshold=st.session_state.get('sex_threshold_used', 16),
+            rebuild_sex_labels=st.session_state.get('sex_rebuild_from_threshold', True),
         )
 
         if uploaded_file:
@@ -1028,7 +1138,7 @@ if st.session_state.df_processed is not None:
             excel_filename = "processed_data.xlsx"
 
         st.download_button(
-            label="📥 Download as Excel",
+            label="Download as Excel",
             data=excel_data,
             file_name=excel_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
