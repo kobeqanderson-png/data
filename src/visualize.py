@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional
 
+from .branding import apply_subtle_branding
+
 
 def boxplot_by_category(df: pd.DataFrame, cat_col: str, value_col: str, out_path: Optional[str] = None):
     sns.set(style="whitegrid")
@@ -12,6 +14,7 @@ def boxplot_by_category(df: pd.DataFrame, cat_col: str, value_col: str, out_path
     sns.boxplot(data=df, x=cat_col, y=value_col)
     plt.title(f"{value_col} distribution by {cat_col}")
     plt.tight_layout()
+    apply_subtle_branding(plt.gcf())
     if out_path:
         plt.savefig(out_path)
     else:
@@ -23,6 +26,7 @@ def countplot(df: pd.DataFrame, col: str, out_path: Optional[str] = None):
     plt.figure(figsize=(8,5))
     sns.countplot(data=df, x=col)
     plt.tight_layout()
+    apply_subtle_branding(plt.gcf())
     if out_path:
         plt.savefig(out_path)
     else:

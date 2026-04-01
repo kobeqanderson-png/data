@@ -3,8 +3,20 @@
 import pandas as pd
 import seaborn as sns
 import numpy as np
-from src.cleaning import basic_clean
-from src.features import add_log_feature
+
+try:
+    from src.cleaning import basic_clean
+    from src.features import add_log_feature
+except ModuleNotFoundError:
+    # Support direct script execution: python src/quick_test.py
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from src.cleaning import basic_clean
+    from src.features import add_log_feature
 
 
 def main():
