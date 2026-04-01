@@ -103,7 +103,7 @@ st.divider()
 
 if st.button("Run Linear Regression", type="primary", use_container_width=True):
     if not feature_cols:
-    st.warning("Select at least one feature variable.")
+        st.warning("Select at least one feature variable.")
     else:
         with st.spinner("Training model..."):
             try:

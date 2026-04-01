@@ -207,6 +207,8 @@ if st.button("Run Processing Pipeline", type="primary", use_container_width=True
             unclassified_count = int((df_processed['Sex'] == 'Unclassified').sum())
             if unclassified_count > 0:
                 st.warning(
+                    f"{unclassified_count} row(s) could not be classified because no numeric animal ID was found in '{sex_col}'."
+                )
             
             st.session_state.sex_col_used = sex_col
             st.session_state.sex_threshold_used = float(threshold)
