@@ -323,6 +323,22 @@ if 'df_raw' not in st.session_state:
 if 'df_processed' not in st.session_state:
     st.session_state.df_processed = None
 
+# Internal defaults (not user-editable in public UI)
+if 'sex_threshold' not in st.session_state:
+    st.session_state.sex_threshold = 16
+if 'sheet_name' not in st.session_state:
+    st.session_state.sheet_name = 0
+if 'fill_missing' not in st.session_state:
+    st.session_state.fill_missing = True
+if 'remove_dupes' not in st.session_state:
+    st.session_state.remove_dupes = True
+if 'strip_ws' not in st.session_state:
+    st.session_state.strip_ws = True
+if 'add_log' not in st.session_state:
+    st.session_state.add_log = True
+if 'branding_enabled' not in st.session_state:
+    st.session_state.branding_enabled = True
+
 # Hero section
 st.markdown(
     """
@@ -405,89 +421,8 @@ st.markdown(
 st.caption("Built with Streamlit | Data Processing Pipeline v2.0 | Dark Brainlife-inspired theme")
 
 st.divider()
-
-# Sidebar settings
-with st.sidebar:
-    st.header("Global Settings")
-    
-    st.subheader("Sex Classification")
-    st.markdown("**Animal # ≤ threshold = Male, > threshold = Female**")
-    st.session_state.sex_threshold = st.number_input(
-        "Default Threshold (Animal #)", 
-        value=16, 
-        min_value=1, 
-        step=1,
-        help="Used as default in processing pages"
-    )
-
-    st.divider()
-
-    st.subheader("Sheet Selection (Excel)")
-    sheet_option = st.radio(
-        "Excel Sheet Selection",
-        ["First sheet (index 0)", "Specify sheet name"],
-        index=0
-    )
-    if sheet_option == "Specify sheet name":
-        st.session_state.sheet_name = st.text_input("Sheet name", value="Sheet1")
-    else:
-        st.session_state.sheet_name = 0
-
-    st.divider()
-
-    st.subheader("Cleaning Options")
-    st.session_state.fill_missing = st.checkbox("Fill missing numeric values with median", value=True)
-    st.session_state.remove_dupes = st.checkbox("Remove duplicate rows", value=True)
-    st.session_state.strip_ws = st.checkbox("Strip whitespace from strings", value=True)
-
-    st.divider()
-
-    st.subheader("Feature Engineering")
-    st.session_state.add_log = st.checkbox("Add log-transformed features", value=True)
-
-    st.divider()
-
-    st.subheader("Attribution (Optional)")
-    st.session_state.branding_enabled = st.checkbox(
-        "Include subtle attribution watermark",
-        value=False,
-        help="Off by default. Turn on for provenance marks in graphs and exports.",
-    )
-
-    st.divider()
-    
-    # Session state info with animation
-    if st.session_state.df_raw is not None:
-        st.markdown("""
-        <div class="metric-card" style="
-            padding: 12px;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            border-radius: 6px;
-            text-align: center;
-        ">
-            <span style="color: #22c55e; font-weight: 600;">Data Loaded</span><br>
-            <span style="color: #9aa4b2; font-size: 12px;">{len(st.session_state.df_raw)} rows ready</span>
-        </div>
-        """.format(len=len), unsafe_allow_html=True)
-    
-    if st.session_state.df_processed is not None:
-        st.markdown("""
-        <div class="metric-card" style="
-            padding: 12px;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            border-radius: 6px;
-            text-align: center;
-            margin-top: 8px;
-        ">
-            <span style="color: #22c55e; font-weight: 600;">Processed</span><br>
-            <span style="color: #9aa4b2; font-size: 12px;">{len(st.session_state.df_processed)} rows analyzed</span>
-        </div>
-        """.format(len=len), unsafe_allow_html=True)
-
 st.divider()
-st.caption("Navigate through pages using the sidebar menu • Your data persists across pages")
+st.caption("Navigate through pages using the top menu • Your data persists across pages")
 
 st.markdown(
     """

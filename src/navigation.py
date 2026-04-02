@@ -126,10 +126,36 @@ def apply_global_chrome() -> None:
             margin-bottom: 0.5rem;
             font-weight: 700;
         }
+
+        .site-watermark {
+            position: fixed;
+            right: 14px;
+            bottom: 10px;
+            color: rgba(212, 220, 240, 0.22);
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            font-weight: 600;
+            pointer-events: none;
+            user-select: none;
+            z-index: 9999;
+            mix-blend-mode: screen;
+        }
+
+        @media (max-width: 860px) {
+            .site-watermark {
+                right: 10px;
+                bottom: 8px;
+                font-size: 9px;
+                letter-spacing: 0.12em;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+    st.markdown("<div class='site-watermark'>kobescodes</div>", unsafe_allow_html=True)
 
 
 def render_top_navigation(current_page: str) -> None:
