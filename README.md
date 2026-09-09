@@ -37,4 +37,4 @@ Upload your CSV. Get clean, analyzed, visualized results — in minutes, not hou
 ## NIH SABV Compliance
 
 The pipeline is built around the NIH mandate that sex be included as a 
-biolog
+biological variable.
